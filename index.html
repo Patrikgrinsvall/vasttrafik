@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a1628" />
+    <meta
+      name="description"
+      content="Västtrafik realtidsförseningar – push-notiser direkt till din enhet"
+    />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <title>Västtrafik Delays</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #060d1a;
+        --surface: #0e1e36;
+        --border: #1a3050;
+        --accent: #00d4ff;
+        --accent2: #ff6b35;
+        --warn: #ffcc00;
+        --text: #c8ddf5;
+        --muted: #4a6a8a;
+        --green: #00e676;
+        --red: #ff4444;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: "DM Mono", monospace;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      /* Animated grid background */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+        background-size: 40px 40px;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .scanline {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          var(--accent),
+          transparent
+        );
+        animation: scan 4s linear infinite;
+        z-index: 1;
+        opacity: 0.4;
+      }
+
+      @keyframes scan {
+        0% {
+          top: 0;
+        }
+        100% {
+          top: 100vh;
+        }
+      }
+
+      header {
+        position: relative;
+        z-index: 10;
+        padding: 2rem 2rem 1rem;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: flex-end;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+      }
+
+      .logo-mark {
+        width: 48px;
+        height: 48px;
+        background: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        clip-path: polygon(
+          50% 0%,
+          100% 25%,
+          100% 75%,
+          50% 100%,
+          0% 75%,
+          0% 25%
+        );
+        flex-shrink: 0;
+      }
+
+      .logo-mark span {
+        font-family: "Syne", sans-serif;
+        font-weight: 800;
+        font-size: 1.1rem;
+        color: var(--bg);
+      }
+
+      .header-text h1 {
+        font-family: "Syne", sans-serif;
+        font-weight: 800;
+        font-size: clamp(1.4rem, 4vw, 2rem);
+        color: #fff;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+
+      .header-text p {
+        font-size: 0.7rem;
+        color: var(--muted);
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        margin-top: 0.3rem;
+      }
+
+      .status-bar {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.7rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+      }
+
+      .dot.active {
+        background: var(--green);
+        animation: pulse 2s infinite;
+      }
+      .dot.error {
+        background: var(--red);
+      }
+      .dot.warn {
+        background: var(--warn);
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+          box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.4);
+        }
+        50% {
+          opacity: 0.8;
+          box-shadow: 0 0 0 6px rgba(0, 230, 118, 0);
+        }
+      }
+
+      main {
+        position: relative;
+        z-index: 10;
+        padding: 1.5rem 2rem;
+        max-width: 900px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 2rem;
+      }
+
+      .btn {
+        padding: 0.6rem 1.4rem;
+        font-family: "DM Mono", monospace;
+        font-size: 0.75rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .btn::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: var(--accent);
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 0.2s;
+        z-index: -1;
+      }
+
+      .btn:hover {
+        color: var(--bg);
+        border-color: var(--accent);
+      }
+      .btn:hover::before {
+        transform: scaleX(1);
+      }
+
+      .btn.primary {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .btn.danger {
+        border-color: var(--red);
+        color: var(--red);
+      }
+      .btn.danger::before {
+        background: var(--red);
+      }
+      .btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
+      .section-label {
+        font-size: 0.65rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .section-label::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--border);
+      }
+
+      .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1px;
+        background: var(--border);
+        border: 1px solid var(--border);
+        margin-bottom: 2rem;
+      }
+
+      .info-card {
+        background: var(--surface);
+        padding: 1rem 1.25rem;
+      }
+
+      .info-card .label {
+        font-size: 0.6rem;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 0.4rem;
+      }
+
+      .info-card .value {
+        font-size: 1.4rem;
+        font-weight: 500;
+        color: #fff;
+        font-family: "Syne", sans-serif;
+      }
+
+      .info-card .value.accent {
+        color: var(--accent);
+      }
+      .info-card .value.warn {
+        color: var(--warn);
+      }
+      .info-card .value.red {
+        color: var(--red);
+      }
+
+      .delay-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        background: var(--border);
+        border: 1px solid var(--border);
+      }
+
+      .delay-item {
+        background: var(--surface);
+        padding: 1rem 1.25rem;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 1rem;
+        align-items: start;
+        animation: slideIn 0.3s ease forwards;
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateX(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      .delay-item:hover {
+        background: #112240;
+      }
+
+      .delay-severity {
+        width: 4px;
+        align-self: stretch;
+        background: var(--muted);
+        flex-shrink: 0;
+      }
+
+      .delay-severity.high {
+        background: var(--red);
+      }
+      .delay-severity.medium {
+        background: var(--warn);
+      }
+      .delay-severity.low {
+        background: var(--accent);
+      }
+
+      .delay-body {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .delay-title {
+        font-size: 0.8rem;
+        color: #fff;
+        margin-bottom: 0.3rem;
+        line-height: 1.4;
+      }
+
+      .delay-meta {
+        font-size: 0.65rem;
+        color: var(--muted);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      .delay-meta span {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 0.1rem 0.4rem;
+        border: 1px solid var(--border);
+      }
+
+      .delay-time {
+        font-size: 0.65rem;
+        color: var(--muted);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .empty-state {
+        padding: 3rem 1.25rem;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.8rem;
+        letter-spacing: 0.1em;
+      }
+
+      .empty-state .icon {
+        font-size: 2rem;
+        margin-bottom: 0.75rem;
+        display: block;
+      }
+
+      .log {
+        margin-top: 2rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        padding: 1rem;
+        max-height: 150px;
+        overflow-y: auto;
+        font-size: 0.65rem;
+        line-height: 1.8;
+      }
+
+      .log-entry {
+        color: var(--muted);
+      }
+      .log-entry.ok {
+        color: var(--green);
+      }
+      .log-entry.err {
+        color: var(--red);
+      }
+      .log-entry.info {
+        color: var(--accent);
+      }
+      .log-entry.warn {
+        color: var(--warn);
+      }
+
+      .notif-banner {
+        padding: 0.75rem 1.25rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid;
+        font-size: 0.72rem;
+        display: none;
+      }
+
+      .notif-banner.show {
+        display: block;
+      }
+      .notif-banner.warning {
+        border-color: var(--warn);
+        color: var(--warn);
+        background: rgba(255, 204, 0, 0.05);
+      }
+      .notif-banner.error {
+        border-color: var(--red);
+        color: var(--red);
+        background: rgba(255, 68, 68, 0.05);
+      }
+      .notif-banner.success {
+        border-color: var(--green);
+        color: var(--green);
+        background: rgba(0, 230, 118, 0.05);
+      }
+
+      .interval-select {
+        font-family: "DM Mono", monospace;
+        font-size: 0.72rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 0.55rem 0.75rem;
+        cursor: pointer;
+      }
+
+      .interval-select:focus {
+        outline: 1px solid var(--accent);
+      }
+
+      @media (max-width: 600px) {
+        header,
+        main {
+          padding: 1rem;
+        }
+        .delay-item {
+          grid-template-columns: auto 1fr;
+        }
+        .delay-time {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="scanline"></div>
+
+    <header>
+      <div class="logo-mark"><span>VT</span></div>
+      <div class="header-text">
+        <h1>VÄSTTRAFIK DELAYS</h1>
+        <p>Realtidsövervakning · Push-notiser</p>
+      </div>
+      <div class="status-bar">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">INAKTIV</span>
+      </div>
+    </header>
+
+    <main>
+      <div id="notifBanner" class="notif-banner"></div>
+
+      <div class="controls">
+        <button class="btn primary" id="btnEnable">Aktivera notiser</button>
+        <button class="btn" id="btnFetch">Hämta nu</button>
+        <select class="interval-select" id="intervalSelect">
+          <option value="60">Var 1 min</option>
+          <option value="300" selected>Var 5 min</option>
+          <option value="600">Var 10 min</option>
+          <option value="1800">Var 30 min</option>
+        </select>
+        <button class="btn" id="btnToggle">Starta polling</button>
+        <button class="btn danger" id="btnClear" style="margin-left: auto">
+          Rensa
+        </button>
+      </div>
+
+      <div class="section-label">Status</div>
+      <div class="info-grid">
+        <div class="info-card">
+          <div class="label">Totalt senaste timmen</div>
+          <div class="value accent" id="statTotal">—</div>
+        </div>
+        <div class="info-card">
+          <div class="label">Nya sedan förra poll</div>
+          <div class="value warn" id="statNew">—</div>
+        </div>
+        <div class="info-card">
+          <div class="label">Notiser skickade</div>
+          <div class="value" id="statNotifs">0</div>
+        </div>
+        <div class="info-card">
+          <div class="label">Senaste hämtning</div>
+          <div class="value" style="font-size: 0.9rem" id="statLast">—</div>
+        </div>
+      </div>
+
+      <div class="section-label">Förseningar senaste timmen</div>
+      <div class="delay-list" id="delayList">
+        <div class="empty-state">
+          <span class="icon">📡</span>
+          Tryck på "Hämta nu" för att ladda förseningar
+        </div>
+      </div>
+
+      <div class="log" id="log"></div>
+    </main>
+
+    <script>
+      // ─── State ──────────────────────────────────────────────────────
+      const state = {
+        polling: false,
+        timer: null,
+        notifCount: 0,
+        seenIds: new Set(),
+        notifGranted: false,
+      };
+
+      const API_URL = "https://www.vasttrafik.se/api/trafficsituations/all";
+      // CORS proxy fallback – Västtrafik doesn't allow direct browser requests
+
+      const PROXY_URL = `https://corsproxy.io/?${encodeURIComponent(API_URL)}`;
+
+      // ─── DOM ─────────────────────────────────────────────────────────
+      const $ = (id) => document.getElementById(id);
+      const btnEnable = $("btnEnable");
+      const btnFetch = $("btnFetch");
+      const btnToggle = $("btnToggle");
+      const btnClear = $("btnClear");
+      const statusDot = $("statusDot");
+      const statusText = $("statusText");
+      const delayList = $("delayList");
+      const logEl = $("log");
+      const banner = $("notifBanner");
+
+      // ─── Logger ───────────────────────────────────────────────────────
+      function log(msg, type = "") {
+        const now = new Date().toLocaleTimeString("sv-SE");
+        const entry = document.createElement("div");
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${now}] ${msg}`;
+        logEl.prepend(entry);
+        if (logEl.children.length > 100) logEl.lastChild.remove();
+      }
+
+      // ─── Banner ───────────────────────────────────────────────────────
+      function showBanner(msg, type) {
+        banner.textContent = msg;
+        banner.className = `notif-banner show ${type}`;
+      }
+
+      // ─── Service Worker Registration ─────────────────────────────────
+      async function registerSW() {
+        if (!("serviceWorker" in navigator)) {
+          showBanner("Din webbläsare stöder inte Service Workers.", "error");
+          return false;
+        }
+        try {
+          const reg = await navigator.serviceWorker.register("sw.js");
+          log("Service Worker registrerad", "ok");
+          return reg;
+        } catch (e) {
+          log("SW-registrering misslyckades: " + e.message, "err");
+          return false;
+        }
+      }
+
+      // ─── Notification Permission ──────────────────────────────────────
+      async function requestNotifPermission() {
+        if (!("Notification" in window)) {
+          showBanner("Din webbläsare stöder inte push-notiser.", "error");
+          return false;
+        }
+        const perm = await Notification.requestPermission();
+        state.notifGranted = perm === "granted";
+        if (state.notifGranted) {
+          showBanner(
+            "✓ Notiser aktiverade! Du får nu varningar om nya förseningar.",
+            "success",
+          );
+          log("Notiser godkända", "ok");
+          btnEnable.textContent = "Notiser aktiverade ✓";
+          btnEnable.disabled = true;
+        } else {
+          showBanner(
+            "Notiser nekades. Ange tillåtelse i webbläsarens inställningar.",
+            "warning",
+          );
+          log("Notiser nekades av användaren", "warn");
+        }
+        return state.notifGranted;
+      }
+
+      // ─── Send Notification ────────────────────────────────────────────
+      async function sendNotification(title, body, tag) {
+        if (!state.notifGranted) return;
+        const reg = await navigator.serviceWorker?.ready;
+        if (reg) {
+          await reg.showNotification(title, {
+            body,
+            tag,
+            icon: "icon-192.png",
+            badge: "icon-192.png",
+            vibrate: [200, 100, 200],
+            data: { url: "https://www.vasttrafik.se" },
+          });
+        } else {
+          new Notification(title, { body, tag });
+        }
+        state.notifCount++;
+        $("statNotifs").textContent = state.notifCount;
+      }
+
+      // ─── Parse & Filter Delays ────────────────────────────────────────
+      function isWithinLastHour(dateStr) {
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        return Date.now() - d.getTime() < 3600_000;
+      }
+
+      function getSeverity(item) {
+        const sev = (item.severity || "").toLowerCase();
+        if (["severe", "high", "critical"].includes(sev)) return "high";
+        if (["normal", "medium", "moderate"].includes(sev)) return "medium";
+        return "low";
+      }
+
+      function parseDelays(data) {
+        // The Västtrafik API returns an array of traffic situation objects
+        // Handle both wrapped {trafficSituations:[...]} and raw array
+        const items = Array.isArray(data)
+          ? data
+          : data.trafficSituations || data.situations || [];
+        const oneHourAgo = Date.now() - 3600_000;
+
+        return items.filter((item) => {
+          // Include if startTime or creationTime is within last hour
+          const start =
+            item.startTime ||
+            item.creationTime ||
+            item.starttime ||
+            item.created;
+          if (!start) return false;
+          const t = new Date(start).getTime();
+          return t >= oneHourAgo && t <= Date.now();
+        });
+      }
+
+      // ─── Render Delays ────────────────────────────────────────────────
+      function renderDelays(delays) {
+        if (!delays.length) {
+          delayList.innerHTML = `<div class="empty-state"><span class="icon">✅</span>Inga registrerade förseningar den senaste timmen</div>`;
+          return;
+        }
+        delayList.innerHTML = "";
+        delays.forEach((item) => {
+          const sev = getSeverity(item);
+          const title =
+            item.title || item.description || item.summary || "Okänd störning";
+          const desc = item.description || item.details || "";
+          const start =
+            item.startTime ||
+            item.creationTime ||
+            item.starttime ||
+            item.created;
+          const timeStr = start
+            ? new Date(start).toLocaleTimeString("sv-SE", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "";
+          const lines = item.affectedLines || item.lines || [];
+          const lineStr = Array.isArray(lines)
+            ? lines
+                .map((l) => l.name || l.designation || l)
+                .filter(Boolean)
+                .join(", ")
+            : "";
+          const area = item.location || item.area || "";
+
+          const el = document.createElement("div");
+          el.className = "delay-item";
+          el.innerHTML = `
+          <div class="delay-severity ${sev}"></div>
+          <div class="delay-body">
+            <div class="delay-title">${escHtml(title)}</div>
+            <div class="delay-meta">
+              ${lineStr ? `<span>🚌 ${escHtml(lineStr)}</span>` : ""}
+              ${area ? `<span>📍 ${escHtml(area)}</span>` : ""}
+              <span class="sev-badge">${sev.toUpperCase()}</span>
+            </div>
+          </div>
+          <div class="delay-time">${timeStr}</div>
+        `;
+          delayList.appendChild(el);
+        });
+      }
+
+      function escHtml(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      // ─── Fetch & Process ──────────────────────────────────────────────
+      async function fetchAndProcess() {
+        setStatus("HÄMTAR...", "warn");
+        log("Hämtar trafikinformation...", "info");
+
+        let data;
+        try {
+          // Try direct first, then proxy
+          let res = await fetch(API_URL).catch(() => null);
+          if (!res || !res.ok) {
+            let params = new URLSearchParams({
+              key: "f0e47764",
+              url: API_URL,
+            });
+            log(
+              "Direkthämtning misslyckades, försöker via CORS-proxy...",
+              "warn",
+            );
+            res = await fetch("https://corsproxy.io/?" + params);
+            console.log("asd",res);
+            //res = await fetch(PROXY_URL);
+          }
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          data = await res.json();
+          log(`Data mottagen (${JSON.stringify(data).length} bytes)`, "ok");
+        } catch (e) {
+          log("Hämtning misslyckades: " + e.message, "err");
+          setStatus("FEL", "");
+          statusDot.className = "dot error";
+          showBanner(
+            `Hämtning misslyckades: ${e.message}. Västtrafik API kan ha CORS-begränsningar.`,
+            "error",
+          );
+          return;
+        }
+
+        const delays = parseDelays(data);
+        $("statTotal").textContent = delays.length;
+        $("statLast").textContent = new Date().toLocaleTimeString("sv-SE");
+
+        // Find new delays not seen before
+        const newDelays = delays.filter((item) => {
+          const id =
+            item.situationNumber ||
+            item.id ||
+            item.situationId ||
+            JSON.stringify(item).slice(0, 60);
+          if (state.seenIds.has(id)) return false;
+          state.seenIds.add(id);
+          return true;
+        });
+
+        $("statNew").textContent = newDelays.length;
+        renderDelays(delays);
+        setStatus("AKTIV", "active");
+
+        if (newDelays.length > 0) {
+          log(`${newDelays.length} nya förseningar hittades!`, "warn");
+          if (newDelays.length === 1) {
+            const d = newDelays[0];
+            const title = d.title || "Ny försening";
+            const lines = d.affectedLines || d.lines || [];
+            const lineStr = Array.isArray(lines)
+              ? lines.map((l) => l.name || l).join(", ")
+              : "";
+            await sendNotification(
+              `🚌 Västtrafik: ${title}`,
+              lineStr ? `Berörda linjer: ${lineStr}` : "Se appen för detaljer.",
+              d.situationNumber || "delay-1",
+            );
+          } else {
+            await sendNotification(
+              `🚌 Västtrafik: ${newDelays.length} nya förseningar`,
+              "Flera linjer drabbade. Öppna appen för detaljer.",
+              "delay-batch",
+            );
+          }
+        } else {
+          log("Inga nya förseningar sedan senaste poll", "ok");
+        }
+      }
+
+      function setStatus(text, type) {
+        statusText.textContent = text;
+        statusDot.className = `dot ${type}`;
+      }
+
+      // ─── Polling ──────────────────────────────────────────────────────
+      function startPolling() {
+        if (state.polling) return;
+        state.polling = true;
+        btnToggle.textContent = "Stoppa polling";
+        btnToggle.classList.add("danger");
+        const interval = parseInt($("intervalSelect").value) * 1000;
+        fetchAndProcess();
+        state.timer = setInterval(fetchAndProcess, interval);
+        log(
+          `Polling startad (var ${$("intervalSelect").options[$("intervalSelect").selectedIndex].text})`,
+          "ok",
+        );
+      }
+
+      function stopPolling() {
+        if (!state.polling) return;
+        state.polling = false;
+        clearInterval(state.timer);
+        btnToggle.textContent = "Starta polling";
+        btnToggle.classList.remove("danger");
+        setStatus("STOPPAD", "");
+        log("Polling stoppad", "warn");
+      }
+
+      // ─── Events ───────────────────────────────────────────────────────
+      btnEnable.addEventListener("click", requestNotifPermission);
+      btnFetch.addEventListener("click", fetchAndProcess);
+      btnToggle.addEventListener("click", () =>
+        state.polling ? stopPolling() : startPolling(),
+      );
+      btnClear.addEventListener("click", () => {
+        state.seenIds.clear();
+        delayList.innerHTML = `<div class="empty-state"><span class="icon">🗑️</span>Rensat. Nästa hämtning visar alla förseningar på nytt.</div>`;
+        $("statNew").textContent = "—";
+        log("Cachade ID:n rensade", "info");
+      });
+
+      // ─── Init ─────────────────────────────────────────────────────────
+      (async () => {
+        await registerSW();
+        if (Notification.permission === "granted") {
+          state.notifGranted = true;
+          btnEnable.textContent = "Notiser aktiverade ✓";
+          btnEnable.disabled = true;
+          showBanner("✓ Notiser är redan aktiverade.", "success");
+          log("Notiser redan godkända", "ok");
+        }
+        log("App initierad", "info");
+      })();
+    </script>
+  </body>
+</html>
